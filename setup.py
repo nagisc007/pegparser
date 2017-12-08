@@ -6,14 +6,33 @@
 #      http://opensource.org/licenses/mit-license.php
 #
 
-"""File Description
-"""
+from distutils.core import setup
 
-import sys
+_AUTHOR     = 'N.T.WORKS'
+_EMAIL      = 'nagisc007@yahoo.co.jp'
+_VERSION    = '1.0.0'
 
-def main(argv):
-    # short description
-    return 0
-
-if __name__ == '__main__':
-    main(sys.argv)
+setup(
+    name='pegparser',
+    version=_VERSION,
+    author=_AUTHOR,
+    author_email=_EMAIL,
+    packages=['pegparser', 'pegparser.test'],
+    url='https://github.com/nagisc007/pegparser',
+    license='LICENSE.txt',
+    description='A simple implementation using PEG parser in Python',
+    long_description=open('README.md').read(),
+    requires=['',],
+    provides=['pegparser (' + _version + ')',],
+    classifiers=[
+        'Development Status :: 4 - Beta',
+        'Intended Audience :: Developers',
+        'License :: OSI Approved :: MIT License',
+        'Operating System :: OS Independent',
+        'Natural Language :: Japanese',
+        'Programming Language :: Python :: 3',
+        'Topic :: Software Development :: Compilers',
+        'Topic :: Software Development :: Interpreters',
+        'Topic :: Software Development :: Libraries :: Python Modules',
+    ],
+)
