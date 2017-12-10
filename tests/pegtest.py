@@ -25,7 +25,7 @@ class TestGrammars(unittest.TestCase):
     def test_defGrammar(self):
         ast = []
         x = peg.defGrammar('x', '1 ')
-        res = x("1 and 2", ast)
+        res = x.parse("1 and 2", ast)
         self.assertEqual(res, (True, 'and 2'))
         self.assertEqual(ast, [('x', '1 ')])
     

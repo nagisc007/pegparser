@@ -7,14 +7,21 @@
 #
 
 # #### Imports ####################################################### #
+from collections import namedtuple
 from functools import wraps
 from inspect import isfunction
 import re
 from typing import Callable
+
 # #### Defines ####################################################### #
+PegGrammar = namedtuple('PegGrammar', 'name parse')
+AstElm = namedtuple('AstElm', 'name val')
+
+class InvalidGrammarError(Exception):
+    '''Raised when invalid grammar.'''
 
 # #### Functions ##################################################### #
-def _skipSpace(src: str) -> str: return src.lstrip()
+def _skipSpace(src: str, isSkip: bool=False) -> str: return isSkip and src.lstrip() or src
 
 def _reduceListVals(src) -> str:
     def _toStr(s):
@@ -26,19 +33,17 @@ def _reduceListVals(src) -> str:
             return ""
     return _toStr(src)
 
-def defGrammar(name: str, pattern: str, isSkip=False) -> Callable:
+def defGrammar(name: str, pattern: str, isSkip: bool=False) -> PegGrammar:
     _compiled = re.compile(pattern)
-    @wraps(defGrammar)
     def _parser(src: str, ast: list, isSkip=isSkip):
-        if isSkip:
-            src = _skipSpace(src)
+        src = _skipSpace(src, isSkip)
         _m = _compiled.match(src)
         if _m:
             if not ast is None:
                 ast.append((name, _m.group(0)))
             return True, src[len(str(_m.group(0))):]
         return False, src
-    return _parser
+    return PegGrammar(name, _parser)
 
 # #################################################################### #
 #   PEG class
@@ -51,13 +56,13 @@ class PEG(object):
     SYMBOLS     = defGrammar('symbols', '[!-/:-@[-`{-~]')
     
     @classmethod
-    def sequence(cls, name: str, *grammars, isConv=False, isSkip=False) -> Callable:
+    def sequence(cls, name: str, *grammars: PegGrammar, isConv=False, isSkip=False) -> PegGrammar:
         # sequence: e1 e2
         @wraps(cls.sequence)
         def _parser(src: str, ast: list, isSkip=isSkip):
             _ast = []
             for gram in grammars:
-                _r, _s = gram(src, _ast, isSkip) if isSkip else gram(src, _ast)
+                _r, _s = gram.parse(src, _ast, isSkip) if isSkip else gram.parse(src, _ast)
                 if _r: src = _s
                 else: break
             if _ast and len(_ast) > 0:
@@ -65,16 +70,16 @@ class PEG(object):
             if src:
                 return True, src
             return False, src
-        return _parser
+        return PegGrammar(name, _parser)
     
     @classmethod
-    def ordered(cls, name: str, *grammars, isConv=False, isSkip=False) -> Callable:
+    def ordered(cls, name: str, *grammars: PegGrammar, isConv=False, isSkip=False) -> PegGrammar:
         # ordered choice: e1/e2
         @wraps(cls.ordered)
         def _parser(src: str, ast: list, isSkip=isSkip):
             _ast = []
             for gram in grammars:
-                _r, _s = gram(src, _ast, isSkip) if isSkip else gram(src, _ast)
+                _r, _s = gram.parse(src, _ast, isSkip) if isSkip else gram.parse(src, _ast)
                 if _r:
                     src = _s
                     break
@@ -83,16 +88,16 @@ class PEG(object):
             if src:
                 return True, src
             return False, src
-        return _parser
+        return PegGrammar(name, _parser)
     
     @classmethod
-    def zeroOrMore(cls, name: str, grammar, isConv=False, isSkip=False) -> Callable:
+    def zeroOrMore(cls, name: str, grammar: PegGrammar, isConv=False, isSkip=False) -> PegGrammar:
         # zero or more: e1*
         @wraps(cls.zeroOrMore)
         def _parser(src: str, ast: list, isSkip=isSkip):
             _ast = []
             while True:
-                _r, _s = grammar(src, _ast, isSkip) if isSkip else grammar(src, _ast)
+                _r, _s = grammar.parse(src, _ast, isSkip) if isSkip else grammar.parse(src, _ast)
                 if _r:
                     src = _s
                 else:
@@ -102,19 +107,19 @@ class PEG(object):
             if src:
                 return True, src
             return False, src
-        return _parser
+        return PegGrammar(name, _parser)
     
     @classmethod
-    def oneOrMore(cls, name: str, grammar, isConv=False, isSkip=False) -> Callable:
+    def oneOrMore(cls, name: str, grammar: PegGrammar, isConv=False, isSkip=False) -> PegGrammar:
         # one ore more: e1+
         @wraps(cls.oneOrMore)
         def _parser(src: str, ast: list, isSkip=isSkip):
             _ast = []
-            _r, _s = grammar(src, _ast, isSkip) if isSkip else grammar(src, _ast)
+            _r, _s = grammar.parse(src, _ast, isSkip) if isSkip else grammar.parse(src, _ast)
             if _r:
                 src = _s
                 while True:
-                    _r, _s = grammar(src, _ast, isSkip) if isSkip else grammar(src, _ast)
+                    _r, _s = grammar.parse(src, _ast, isSkip) if isSkip else grammar.parse(src, _ast)
                     if _r:
                         src = _s
                     else:
@@ -126,57 +131,59 @@ class PEG(object):
             if src:
                 return True, src
             return False, src
-        return _parser
+        return PegGrammar(name, _parser)
         
     @classmethod
-    def optional(cls, name: str, grammar, isConv=False, isSkip=False) -> Callable:
+    def optional(cls, name: str, grammar: PegGrammar, isConv=False, isSkip=False) -> PegGrammar:
         # optional: e1?
         @wraps(cls.optional)
         def _parser(src: str, ast: list, isSkip=isSkip):
             _ast = []
-            _r, _s = grammar(src, _ast, isSkip) if isSkip else grammar(src, _ast)
+            _r, _s = grammar.parse(src, _ast, isSkip) if isSkip else grammar.parse(src, _ast)
             if _r:
                 src = _s
                 if _ast and len(_ast) > 0:
                     ast.append((name, _reduceListVals(_ast) if isConv else _ast))
             return True, src
-        return _parser
+        return PegGrammar(name, _parser)
         
     @classmethod
-    def andPred(cls, name: str, grammar, isConv=False, isSkip=False) -> Callable:
+    def andPred(cls, name: str, grammar: PegGrammar, isConv=False, isSkip=False) -> PegGrammar:
         # and predicate: &e1
         @wraps(cls.andPred)
         def _parser(src: str, ast: list, isSkip=isSkip):
-            _r, _s = grammar(src, None, isSkip) if isSkip else grammar(src, None)
+            _r, _s = grammar.parse(src, None, isSkip) if isSkip else grammar.parse(src, None)
             return _r, src
-        return _parser
+        return PegGrammar(name, _parser)
         
     @classmethod
-    def notPred(cls, name: str, grammar, isConv=False, isSkip=False) -> Callable:
+    def notPred(cls, name: str, grammar: PegGrammar, isConv=False, isSkip=False) -> PegGrammar:
         # not predicate: !e1
         @wraps(cls.notPred)
         def _parser(src: str, ast: list, isSkip=isSkip):
-            _r, _s = grammar(src, None, isSkip) if isSkip else grammar(src, None)
+            _r, _s = grammar.parse(src, None, isSkip) if isSkip else grammar.parse(src, None)
             return not _r, src
-        return _parser
+        return PegGrammar(name, _parser)
         
     @classmethod
     def parse(cls, src: str, grammars: list, ast: list) -> bool:
         _src = src
-        if isfunction(grammars):
-            _r, _s = grammars(src, ast)
+        if isinstance(grammars, PegGrammar):
+            _r, _s = grammars.parse(src, ast)
             return  _r or _s == ''
         for gram in grammars:
-            _r, _s = gram(_src, ast)
+            if not isinstance(gram, PegGrammar):
+                raise InvalidGrammarError
+            _r, _s = gram.parse(_src, ast)
             if not _r or _s == '': return True
             _src = _s
         return False
 
 # shorter
-PEG.seq = PEG.sequence
-PEG.o = PEG.ordered
-PEG.one = PEG.oneOrMore
-PEG.opt = PEG.optional
-PEG.zero = PEG.zeroOrMore
-PEG.a = PEG.andPred
-PEG.n = PEG.notPred
+pSeq = PEG.sequence
+pOr = PEG.ordered
+pOne = PEG.oneOrMore
+pOpt = PEG.optional
+pZero = PEG.zeroOrMore
+pAnd = PEG.andPred
+pNot = PEG.notPred

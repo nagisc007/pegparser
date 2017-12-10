@@ -17,7 +17,7 @@ setup(
     version=_VERSION,
     author=_AUTHOR,
     author_email=_EMAIL,
-    packages=['pegparser', 'pegparser.test'],
+    packages=['pegparser'],
     url='https://github.com/nagisc007/pegparser',
     license='LICENSE.txt',
     description='A simple implementation using PEG parser in Python',
