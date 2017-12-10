@@ -34,27 +34,10 @@ def _reduceListVals(src) -> str:
             return ""
     return _toStr(src)
 
-def defGrammar(name: str, pattern: str, isSkip: bool=False) -> PegGrammar:
-    _compiled = re.compile(pattern)
-    def _parser(src: str, ast: list, isSkip=isSkip):
-        src = _skipSpace(src, isSkip)
-        _m = _compiled.match(src)
-        if _m:
-            if not ast is None:
-                ast.append((name, _m.group(0)))
-            return True, src[len(str(_m.group(0))):]
-        return False, src
-    return PegGrammar(name, _parser)
-
 # #################################################################### #
 #   PEG class
 # #################################################################### #
 class PEG(object):
-    BR          = defGrammar('breakline', '\n')
-    SPACE       = defGrammar('space', '\s')
-    NUMBER      = defGrammar('number', '[+-]?[0-9]+\.?[0-9]*')
-    STRINGS     = defGrammar('strings', '[a-zA-Zぁ-んァ-ン一-龥：-＠]+')
-    SYMBOLS     = defGrammar('symbols', '[!-/:-@[-`{-~]')
     
     @classmethod
     def sequence(cls, name: str, *grammars: PegGrammar, isConv=False, isSkip=False) -> PegGrammar:
@@ -193,11 +176,18 @@ class PEG(object):
             _src = _s
         return False
 
+# basic grammar implemented
+PEG.BR          = PEG.grammar('breakline', '\n')
+PEG.SPACE       = PEG.grammar('space', '\s')
+PEG.NUMBER      = PEG.grammar('number', '[+-]?[0-9]+\.?[0-9]*')
+PEG.STRINGS     = PEG.grammar('strings', '[a-zA-Zぁ-んァ-ン一-龥：-＠]+')
+PEG.SYMBOLS     = PEG.grammar('symbols', '[!-/:-@[-`{-~]')
+
 # shorter
-pSeq = PEG.sequence
-pOr = PEG.ordered
-pOne = PEG.oneOrMore
-pOpt = PEG.optional
-pZero = PEG.zeroOrMore
-pAnd = PEG.andPred
-pNot = PEG.notPred
+PEG.seq = PEG.sequence
+PEG.o = PEG.ordered
+PEG.one = PEG.oneOrMore
+PEG.opt = PEG.optional
+PEG.zero = PEG.zeroOrMore
+PEG.a = PEG.andPred
+PEG.n = PEG.notPred
