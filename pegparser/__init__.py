@@ -12,10 +12,11 @@ from functools import wraps
 from inspect import isfunction
 import re
 from typing import Callable
+from typing import Union
 
 # #### Defines ####################################################### #
 PegGrammar = namedtuple('PegGrammar', 'name parse')
-AstElm = namedtuple('AstElm', 'name val')
+AstNode = namedtuple('AstElm', 'name val')
 
 class InvalidGrammarError(Exception):
     '''Raised when invalid grammar.'''
@@ -164,9 +165,22 @@ class PEG(object):
             _r, _s = grammar.parse(src, None, isSkip) if isSkip else grammar.parse(src, None)
             return not _r, src
         return PegGrammar(name, _parser)
-        
+    
     @classmethod
-    def parse(cls, src: str, grammars: list, ast: list) -> bool:
+    def grammar(cls, name: str, pattern: str, isSkip: bool=False) -> PegGrammar:
+        _compiled = re.compile(pattern)
+        def _parser(src: str, ast: list, isSkip=isSkip):
+            src = _skipSpace(src, isSkip)
+            _m = _compiled.match(src)
+            if _m:
+                if not ast is None:
+                    ast.append((name, _m.group(0)))
+                return True, src[len(str(_m.group(0))):]
+            return False, src
+        return PegGrammar(name, _parser)
+    
+    @classmethod
+    def parse(cls, src: str, grammars: Union[PegGrammar, list], ast: list) -> bool:
         _src = src
         if isinstance(grammars, PegGrammar):
             _r, _s = grammars.parse(src, ast)
