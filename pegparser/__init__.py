@@ -27,8 +27,9 @@ def _skipSpace(src: str, isSkip: bool=False) -> str: return isSkip and src.lstri
 def _reduceListVals(src) -> str:
     def _toStr(s):
         if isinstance(s, str): return s
-        if isinstance(s, (list, tuple)):
-            if len(s) == 2: return s[1]
+        if isinstance(s, AstNode):
+            return s.val
+        elif isinstance(s, list):
             return "".join([_toStr(x) for x in s])
         else:
             return ""
@@ -134,7 +135,7 @@ class PEG(object):
         return PegGrammar(name, _parser)
         
     @classmethod
-    def andPred(cls, name: str, grammar: PegGrammar, isConv=False, isSkip=False) -> PegGrammar:
+    def andPred(cls, name: str, grammar: PegGrammar, isSkip=False) -> PegGrammar:
         # and predicate: &e1
         @wraps(cls.andPred)
         def _parser(src: str, ast: list, isSkip=isSkip):
@@ -143,7 +144,7 @@ class PEG(object):
         return PegGrammar(name, _parser)
         
     @classmethod
-    def notPred(cls, name: str, grammar: PegGrammar, isConv=False, isSkip=False) -> PegGrammar:
+    def notPred(cls, name: str, grammar: PegGrammar, isSkip=False) -> PegGrammar:
         # not predicate: !e1
         @wraps(cls.notPred)
         def _parser(src: str, ast: list, isSkip=isSkip):
@@ -152,7 +153,54 @@ class PEG(object):
         return PegGrammar(name, _parser)
     
     @classmethod
-    def grammar(cls, name: str, pattern: str, isSkip: bool=False) -> PegGrammar:
+    def grammar(cls, name: str, *srcs: Union[str, PegGrammar], isSkip=False) -> PegGrammar:
+        _grams = []
+        _tmp = None
+        _isOrdered = None
+        for src in srcs:
+            if _isOrdered:
+                if _isOrdered == '/' and _tmp:
+                    _grams.append(cls.ordered(name, _tmp, cls._grammar(name, src, isSkip=isSkip), isConv=True, isSkip=isSkip))
+                elif _isOrdered == '&':
+                    _grams.append(cls.andPred(name, cls._grammar(name, src, isSkip=isSkip), isSkip=isSkip))
+                elif _isOrdered == '!':
+                    _grams.append(cls.notPred(name, cls._grammar(name, src, isSkip=isSkip), isSkip=isSkip))
+                _isOrdered = None
+                _tmp = None
+            elif isinstance(src, str):
+                if src == '/' and _tmp:
+                    _isOrdered = src
+                elif src in ('&', '!'):
+                    _isOrdered = src
+                    if _tmp:
+                        _grams.append(_tmp)
+                        _tmp = None
+                elif src == '*' and _tmp:
+                    _grams.append(cls.zeroOrMore(name, _tmp, isConv=True, isSkip=isSkip))
+                    _tmp = None
+                elif src == '+' and _tmp:
+                    _grams.append(cls.oneOrMore(name, _tmp, isConv=True, isSkip=isSkip))
+                    _tmp = None
+                elif src == '?' and _tmp:
+                    _grams.append(cls.optional(name, _tmp, isConv=True, isSkip=isSkip))
+                    _tmp = None
+                else:
+                    if _tmp:
+                        _grams.append(_tmp)
+                        _tmp = cls._grammar(name, src, isSkip=isSkip)
+                    else:
+                        _tmp = cls._grammar(name, src, isSkip=isSkip)
+            elif isinstance(src, PegGrammar):
+                _grams.append(src)
+            else:
+                raise InvalidGrammarError
+        if _tmp:
+            _grams.append(_tmp)
+        return len(_grams) == 1 and _grams[0] \
+            or cls.sequence(name, *_grams, isConv=True, isSkip=isSkip)
+    
+    @classmethod
+    def _grammar(cls, name: str, pattern: str, isSkip: bool=False) -> PegGrammar:
         _compiled = re.compile(pattern)
         def _parser(src: str, ast: list, isSkip=isSkip):
             src = _skipSpace(src, isSkip)
@@ -179,11 +227,11 @@ class PEG(object):
         return False
 
 # basic grammar implemented
-PEG.BR          = PEG.grammar('breakline', '\n')
-PEG.SPACE       = PEG.grammar('space', '\s')
-PEG.NUMBER      = PEG.grammar('number', '[+-]?[0-9]+\.?[0-9]*')
-PEG.STRINGS     = PEG.grammar('strings', '[a-zA-Zぁ-んァ-ン一-龥：-＠]+')
-PEG.SYMBOLS     = PEG.grammar('symbols', '[!-/:-@[-`{-~]')
+PEG.BR          = PEG._grammar('breakline', '\n')
+PEG.SPACE       = PEG._grammar('space', '\s')
+PEG.NUMBER      = PEG._grammar('number', '[+-]?[0-9]+\.?[0-9]*')
+PEG.STRINGS     = PEG._grammar('strings', '[a-zA-Zぁ-んァ-ン一-龥：-＠]+')
+PEG.SYMBOLS     = PEG._grammar('symbols', '[!-/:-@[-`{-~]')
 
 # shorter
 PEG.seq = PEG.sequence
