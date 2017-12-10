@@ -16,7 +16,7 @@ from typing import Union
 
 # #### Defines ####################################################### #
 PegGrammar = namedtuple('PegGrammar', 'name parse')
-AstNode = namedtuple('AstElm', 'name val')
+AstNode = namedtuple('AstNode', 'name val')
 
 class InvalidGrammarError(Exception):
     '''Raised when invalid grammar.'''
@@ -40,6 +40,13 @@ def _reduceListVals(src) -> str:
 class PEG(object):
     
     @classmethod
+    def _appendAstNode(cls, name: str, origin: list, src: Union[list, str, None], isConv: bool) -> bool:
+        if src and (isinstance(src, (list,tuple)) and len(src) > 0 or isinstance(src, str)):
+            origin.append(AstNode(name, _reduceListVals(src) if isConv else src))
+            return True
+        return False
+    
+    @classmethod
     def sequence(cls, name: str, *grammars: PegGrammar, isConv=False, isSkip=False) -> PegGrammar:
         # sequence: e1 e2
         @wraps(cls.sequence)
@@ -49,8 +56,7 @@ class PEG(object):
                 _r, _s = gram.parse(src, _ast, isSkip) if isSkip else gram.parse(src, _ast)
                 if _r: src = _s
                 else: break
-            if _ast and len(_ast) > 0:
-                ast.append((name, _reduceListVals(_ast) if isConv else _ast))
+            cls._appendAstNode(name, ast, _ast, isConv)
             if src:
                 return True, src
             return False, src
@@ -67,8 +73,7 @@ class PEG(object):
                 if _r:
                     src = _s
                     break
-            if _ast and len(_ast) > 0:
-                ast.append((name, _reduceListVals(_ast) if isConv else _ast))
+            cls._appendAstNode(name, ast, _ast, isConv)
             if src:
                 return True, src
             return False, src
@@ -86,8 +91,7 @@ class PEG(object):
                     src = _s
                 else:
                     break
-            if _ast and len(_ast) > 0:
-                ast.append((name, _reduceListVals(_ast) if isConv else _ast))
+            cls._appendAstNode(name, ast, _ast, isConv)
             if src:
                 return True, src
             return False, src
@@ -110,8 +114,7 @@ class PEG(object):
                         break
             else:
                 return False, src
-            if _ast and len(_ast) > 0:
-                ast.append((name, _reduceListVals(_ast) if isConv else _ast))
+            cls._appendAstNode(name, ast, _ast, isConv)
             if src:
                 return True, src
             return False, src
@@ -126,8 +129,7 @@ class PEG(object):
             _r, _s = grammar.parse(src, _ast, isSkip) if isSkip else grammar.parse(src, _ast)
             if _r:
                 src = _s
-                if _ast and len(_ast) > 0:
-                    ast.append((name, _reduceListVals(_ast) if isConv else _ast))
+                cls._appendAstNode(name, ast, _ast, isConv)
             return True, src
         return PegGrammar(name, _parser)
         
@@ -157,7 +159,7 @@ class PEG(object):
             _m = _compiled.match(src)
             if _m:
                 if not ast is None:
-                    ast.append((name, _m.group(0)))
+                    cls._appendAstNode(name, ast, _m.group(0), False)
                 return True, src[len(str(_m.group(0))):]
             return False, src
         return PegGrammar(name, _parser)
