@@ -18,7 +18,6 @@ import re
 # PEG package
 sys.path.append(os.path.dirname(os.path.abspath(__file__)) + '/../')
 from pegparser import PEG
-
 # #### Tests ######################################################### #
 class TestGrammars(unittest.TestCase):
     

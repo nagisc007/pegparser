@@ -21,18 +21,18 @@ AstNode = namedtuple('AstNode', 'name val')
 class InvalidGrammarError(Exception):
     '''Raised when invalid grammar.'''
 
+class InvalidGrammarValueError(Exception):
+    '''Raised when invalid value to use grammar.'''
+
 # #### Functions ##################################################### #
 def _skipSpace(src: str, isSkip: bool=False) -> str: return isSkip and src.lstrip() or src
 
 def _reduceListVals(src) -> str:
     def _toStr(s):
         if isinstance(s, str): return s
-        if isinstance(s, AstNode):
-            return s.val
-        elif isinstance(s, list):
-            return "".join([_toStr(x) for x in s])
-        else:
-            return ""
+        elif isinstance(s, AstNode): return s.val
+        elif isinstance(s, list): return "".join([_toStr(x) for x in s])
+        else: return ""
     return _toStr(src)
 
 # #################################################################### #
@@ -48,7 +48,27 @@ class PEG(object):
         return False
     
     @classmethod
+    def _grammar(cls, name: str, pattern: str, isSkip: bool=False) -> PegGrammar:
+        if pattern == '': raise InvalidGrammarValueError
+        _compiled = re.compile(pattern)
+        def _parser(src: str, ast: list, isSkip=isSkip):
+            src = _skipSpace(src, isSkip)
+            _m = _compiled.match(src)
+            if _m:
+                if not ast is None:
+                    cls._appendAstNode(name, ast, _m.group(0), False)
+                return True, src[len(str(_m.group(0))):]
+            return False, src
+        return PegGrammar(name, _parser)
+    
+    @classmethod
+    def _validateGrammars(cls, grammars: list):
+        if len([x for x in grammars if not isinstance(x, PegGrammar)]) > 0: raise InvalidGrammarError
+        return True
+    
+    @classmethod
     def sequence(cls, name: str, *grammars: PegGrammar, isConv=False, isSkip=False) -> PegGrammar:
+        cls._validateGrammars(grammars)
         # sequence: e1 e2
         @wraps(cls.sequence)
         def _parser(src: str, ast: list, isSkip=isSkip):
@@ -65,6 +85,7 @@ class PEG(object):
     
     @classmethod
     def ordered(cls, name: str, *grammars: PegGrammar, isConv=False, isSkip=False) -> PegGrammar:
+        cls._validateGrammars(grammars)
         # ordered choice: e1/e2
         @wraps(cls.ordered)
         def _parser(src: str, ast: list, isSkip=isSkip):
@@ -82,6 +103,7 @@ class PEG(object):
     
     @classmethod
     def zeroOrMore(cls, name: str, grammar: PegGrammar, isConv=False, isSkip=False) -> PegGrammar:
+        cls._validateGrammars([grammar])
         # zero or more: e1*
         @wraps(cls.zeroOrMore)
         def _parser(src: str, ast: list, isSkip=isSkip):
@@ -100,6 +122,7 @@ class PEG(object):
     
     @classmethod
     def oneOrMore(cls, name: str, grammar: PegGrammar, isConv=False, isSkip=False) -> PegGrammar:
+        cls._validateGrammars([grammar])
         # one ore more: e1+
         @wraps(cls.oneOrMore)
         def _parser(src: str, ast: list, isSkip=isSkip):
@@ -123,6 +146,7 @@ class PEG(object):
         
     @classmethod
     def optional(cls, name: str, grammar: PegGrammar, isConv=False, isSkip=False) -> PegGrammar:
+        cls._validateGrammars([grammar])
         # optional: e1?
         @wraps(cls.optional)
         def _parser(src: str, ast: list, isSkip=isSkip):
@@ -136,6 +160,7 @@ class PEG(object):
         
     @classmethod
     def andPred(cls, name: str, grammar: PegGrammar, isSkip=False) -> PegGrammar:
+        cls._validateGrammars([grammar])
         # and predicate: &e1
         @wraps(cls.andPred)
         def _parser(src: str, ast: list, isSkip=isSkip):
@@ -145,6 +170,7 @@ class PEG(object):
         
     @classmethod
     def notPred(cls, name: str, grammar: PegGrammar, isSkip=False) -> PegGrammar:
+        cls._validateGrammars([grammar])
         # not predicate: !e1
         @wraps(cls.notPred)
         def _parser(src: str, ast: list, isSkip=isSkip):
@@ -184,6 +210,8 @@ class PEG(object):
                 elif src == '?' and _tmp:
                     _grams.append(cls.optional(name, _tmp, isConv=True, isSkip=isSkip))
                     _tmp = None
+                elif src == '':
+                    raise InvalidGrammarValueError
                 else:
                     if _tmp:
                         _grams.append(_tmp)
@@ -198,19 +226,6 @@ class PEG(object):
             _grams.append(_tmp)
         return len(_grams) == 1 and _grams[0] \
             or cls.sequence(name, *_grams, isConv=True, isSkip=isSkip)
-    
-    @classmethod
-    def _grammar(cls, name: str, pattern: str, isSkip: bool=False) -> PegGrammar:
-        _compiled = re.compile(pattern)
-        def _parser(src: str, ast: list, isSkip=isSkip):
-            src = _skipSpace(src, isSkip)
-            _m = _compiled.match(src)
-            if _m:
-                if not ast is None:
-                    cls._appendAstNode(name, ast, _m.group(0), False)
-                return True, src[len(str(_m.group(0))):]
-            return False, src
-        return PegGrammar(name, _parser)
     
     @classmethod
     def parse(cls, src: str, grammars: Union[PegGrammar, list], ast: list) -> bool:
