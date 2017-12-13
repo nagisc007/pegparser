@@ -6,17 +6,69 @@
 #      http://opensource.org/licenses/mit-license.php
 #
 
+''' Note:
+
+    Terminal symbol:    literal (numbers, strings, symbols)
+    Non-terminal symbol:Alphabet to define
+    Empty character:    white spaces(contains tab, break-line)
+'''
+
 # #### Imports ####################################################### #
 from collections import namedtuple
-from functools import wraps
-from inspect import isfunction
+from enum import Enum
 import re
+from typing import Any
 from typing import Callable
+from typing import Tuple
 from typing import Union
-
+from typing import NewType
+from typing.re import Pattern
 # #### Defines ####################################################### #
-PegGrammar = namedtuple('PegGrammar', 'name parse')
-AstNode = namedtuple('AstNode', 'name val')
+MatchResult = NewType('MatchResult', Union[str, None])
+
+DEFAULT_NAME = '__undefined__'
+
+class TermAttr(Enum):
+    SEQUENCE    = 1
+    ORDERED     = 2
+    ZERO_OR_MORE= 3
+    ONE_OR_MORE = 4
+    OPTIONAL    = 5
+    AND_PRED    = 6
+    NOT_PRED    = 7
+
+'''Terminal symbol:
+    pattern(Pattern): the pattern compiled for matching any.
+'''
+Term = namedtuple('Term', 'pattern')
+
+'''Non-Terminal symbol:
+    name(str): symbol name
+    exprs(pattern, list[Term, NTerm]): expressions
+    attr(TermAttr): term attributes
+    shorted(bool): is shorted values flag
+'''
+NTerm = namedtuple('NTerm', 'name exprs attr shorted')
+
+''' Ast node:
+
+    name: (str) symbol name
+    val: (list) node values
+'''
+AstNode = namedtuple('AstNode', 'name val')# Node val must be list type.
+
+_EmptyNode = AstNode('__empty__', None)
+
+EmptyExpr = namedtuple('EmptyExpr', 'match')
+
+EMPTY       = Term(EmptyExpr(lambda s: (True, s)))
+WHITESPACE  = NTerm('__space__', [Term(re.compile('[\s\t]'))], TermAttr.SEQUENCE, True)
+ENDLINE     = NTerm('__endline__', [Term(re.compile('\n'))], TermAttr.SEQUENCE, True)
+SYMBOLS     = NTerm('__symbol__', [Term(re.compile('[!-/:-@[-`{-~]'))], TermAttr.SEQUENCE, True)
+STRINGS     = NTerm('__string__', [Term(re.compile('[a-zA-Zぁ-んァ-ン一-龥：-＠]+'))], TermAttr.SEQUENCE, True)
+NUMBERS     = NTerm('__number__', [Term(re.compile('[+-]?[0-9]+\.?[0-9]*'))], TermAttr.SEQUENCE, True)
+
+EndTerms = (WHITESPACE, ENDLINE, SYMBOLS, STRINGS, NUMBERS)
 
 class InvalidGrammarError(Exception):
     '''Raised when invalid grammar.'''
@@ -24,235 +76,199 @@ class InvalidGrammarError(Exception):
 class InvalidGrammarValueError(Exception):
     '''Raised when invalid value to use grammar.'''
 
-# #### Functions ##################################################### #
-def _skipSpace(src: str, isSkip: bool=False) -> str: return isSkip and src.lstrip() or src
+class InvalidSymbolError(Exception):
+    '''Raised when invalid symbol name.'''
 
-def _reduceListVals(src) -> str:
-    def _toStr(s):
-        if isinstance(s, str): return s
-        elif isinstance(s, AstNode): return s.val
-        elif isinstance(s, list): return "".join([_toStr(x) for x in s])
-        else: return ""
-    return _toStr(src)
+class InvalidTermError(Exception):
+    '''Raised when invalid terminal symbol.'''
+
+class InvalidNonTermError(Exception):
+    '''Raised when invalid non-terminal symbol.'''
+
+class InvalidNonTermValueError(Exception):
+    '''Raised when invalid non-terminal symbol value.'''
+
+class InvalidExpressionError(Exception):
+    '''Raised when invalid non-terminal symbol expression.'''
+
+# #### Functions ##################################################### #
+def _toTerm(pattern: str) -> Term: return Term(re.compile(pattern))
+
+def _createNTermExpr(exprs: tuple) -> Union[Term, list]:
+    return len(exprs) == 1 and isinstance(exprs[0], str) and _toTerm(exprs[0]) \
+        or [_toTerm(e) if isinstance(e, str) else e for e in exprs if isinstance(e, (str, NTerm))]
+
+def _createNTerm(name: str, *exprs: Union[str, list], attr: TermAttr=TermAttr.SEQUENCE, shorted: bool=True) -> NTerm:
+    return NTerm(name, _createNTermExpr(exprs), attr, shorted)
+
+def _expression(src: str, term: Term): return term.pattern.match(src)
+
+def _invalidTerm(t: Any) -> bool:
+    return not isinstance(t, Term)
+
+def _invalidNTerm(t: Any) -> bool:
+    return not isinstance(t, NTerm)
+
+def _invalidList(t: Any) -> bool:
+    return not isinstance(t, list)
+
+def _nodesReduced(nodes: list, shorted: bool=True) -> list:
+    _conv = []
+    _tmp = ''
+    _hasAst = False
+    for node in nodes:
+        if isinstance(node, str): _tmp += node
+        else:# astnode
+            if _tmp != '':
+                _conv.append(_tmp)
+                _tmp = ''
+            if node != _EmptyNode:
+                _hasAst = True
+                _conv.append(_nodesReduced(node.val, True) if shorted else node)
+    if _tmp != '': _conv.append(_tmp)
+    return _conv if not shorted and _hasAst else "".join(_conv)
+
+def _parseTerm(src: str, terms: Term, attr: TermAttr=TermAttr.SEQUENCE) -> Tuple[str, MatchResult]:
+    if _invalidTerm(terms): raise InvalidTermError
+    _src = src
+    if attr == TermAttr.ZERO_OR_MORE:
+        _tmp = []
+        while True:
+            _m = _expression(_src, terms)
+            if _m:
+                _tmp.append(_m.group(0))
+                _src = _src[len(str(_m.group(0))):]
+            elif _src == '': break
+            else: break
+        return (_src, "".join(_nodesReduced(_tmp)) if len(_tmp) > 0 else _EmptyNode)
+    elif attr == TermAttr.ONE_OR_MORE:
+        _m = _expression(_src, terms)
+        if not _m: return (_src, None)
+        _tmp = [_m.group(0)]
+        _src = _src[len(str(_m.group(0))):]
+        while True:
+            _m = _expression(_src, terms)
+            if _m:
+                _tmp.append(_m.group(0))
+                _src = _src[len(str(_m.group(0))):]
+            elif _src == '': break
+            else: break
+        return (_src, "".join(_nodesReduced(_tmp)))
+    elif attr == TermAttr.OPTIONAL:
+        _m = _expression(_src, terms)
+        if not _m:
+            return (src, _EmptyNode)
+    elif attr == TermAttr.AND_PRED:
+        _m = _expression(_src, terms)
+        if _m:
+            return (src, _EmptyNode)
+        else:
+            return (src, None)
+    elif attr == TermAttr.NOT_PRED:
+        _m = _expression(_src, terms)
+        if not _m:
+            return (src, _EmptyNode)
+        else:
+            return (src, None)
+    else:
+        _m = _expression(_src, terms)
+    return _m and (_src[len(str(_m.group(0))):], _m.group(0)) or (_src, None)
+
+def _parseNTerm(src: str, terms: NTerm) -> Tuple[str, Union[dict, str]]:
+    if _invalidNTerm(terms): raise InvalidNonTermError
+    return _parse(src, terms.exprs, terms.name, terms.attr, terms.shorted)
+
+def _parseList(src: str, terms: list, name: str, attr: TermAttr=TermAttr.SEQUENCE, shorted: bool=True) -> Tuple[str, list]:
+    if _invalidList(terms): raise InvalidNonTermValueError
+    _nodes = []
+    _src = src
+    for t in terms:
+        _s, _res = _parse(_src, t, name, attr)
+        if attr == TermAttr.ORDERED:
+            if _res:
+                _nodes.append(_res)
+                _src = _s
+                break
+        else:# Sequence
+            if _res:
+                _nodes.append(_res)
+                _src = _s
+            else:
+                break
+    return (attr == TermAttr.AND_PRED or attr == TermAttr.NOT_PRED) and (src, _EmptyNode) \
+        or (_src, _nodesReduced(_nodes, shorted))
+
+def _parse(src, terms, name, attr: TermAttr=TermAttr.SEQUENCE, shorted: bool=True) -> Tuple[str, Union[dict, str]]:
+    if isinstance(terms, Term):
+        _src, _res = _parseTerm(src, terms, attr)
+        return (_src, _res)
+    elif isinstance(terms, NTerm):
+        _src, _res = _parseNTerm(src, terms)
+        return (_src, _res if _res else None)
+    elif isinstance(terms, list):
+        _src, _res = _parseList(src, terms, name, attr, shorted)
+        return (_src, AstNode(name, _res) if _res else None)
+    else:
+        raise InvalidGrammarError
 
 # #################################################################### #
 #   PEG class
 # #################################################################### #
 class PEG(object):
     
-    @classmethod
-    def _appendAstNode(cls, name: str, origin: list, src: Union[list, str, None], isConv: bool) -> bool:
-        if src and (isinstance(src, (list,tuple)) and len(src) > 0 or isinstance(src, str)):
-            origin.append(AstNode(name, _reduceListVals(src) if isConv else src))
-            return True
-        return False
+    _symbols = {}
+    
+    WHITESPACE  = WHITESPACE
+    ENDLINE     = ENDLINE
+    SYMBOLS     = SYMBOLS
+    STRINGS     = STRINGS
+    NUMBERS     = NUMBERS
     
     @classmethod
-    def _grammar(cls, name: str, pattern: str, isSkip: bool=False) -> PegGrammar:
-        if pattern == '': raise InvalidGrammarValueError
-        _compiled = re.compile(pattern)
-        def _parser(src: str, ast: list, isSkip=isSkip):
-            src = _skipSpace(src, isSkip)
-            _m = _compiled.match(src)
-            if _m:
-                if not ast is None:
-                    cls._appendAstNode(name, ast, _m.group(0), False)
-                return True, src[len(str(_m.group(0))):]
-            return False, src
-        return PegGrammar(name, _parser)
+    def _invalidateGrammar(cls, grammar: Any) -> bool: return not isinstance(grammar, NTerm)
     
     @classmethod
-    def _validateGrammars(cls, grammars: list):
-        if len([x for x in grammars if not isinstance(x, PegGrammar)]) > 0: raise InvalidGrammarError
-        return True
+    def _invalidateSymbol(cls, symbolName: str) -> bool: return symbolName in cls._symbols
     
     @classmethod
-    def sequence(cls, name: str, *grammars: PegGrammar, isConv=False, isSkip=False) -> PegGrammar:
-        cls._validateGrammars(grammars)
-        # sequence: e1 e2
-        @wraps(cls.sequence)
-        def _parser(src: str, ast: list, isSkip=isSkip):
-            _ast = []
-            for gram in grammars:
-                _r, _s = gram.parse(src, _ast, isSkip) if isSkip else gram.parse(src, _ast)
-                if _r: src = _s
-                else: break
-            cls._appendAstNode(name, ast, _ast, isConv)
-            if src:
-                return True, src
-            return False, src
-        return PegGrammar(name, _parser)
+    def _validateSymbol(cls, symbolName: str) -> bool: return not symbolName in cls._symbols
     
     @classmethod
-    def ordered(cls, name: str, *grammars: PegGrammar, isConv=False, isSkip=False) -> PegGrammar:
-        cls._validateGrammars(grammars)
-        # ordered choice: e1/e2
-        @wraps(cls.ordered)
-        def _parser(src: str, ast: list, isSkip=isSkip):
-            _ast = []
-            for gram in grammars:
-                _r, _s = gram.parse(src, _ast, isSkip) if isSkip else gram.parse(src, _ast)
-                if _r:
-                    src = _s
-                    break
-            cls._appendAstNode(name, ast, _ast, isConv)
-            if src:
-                return True, src
-            return False, src
-        return PegGrammar(name, _parser)
+    def _appendSymbol(cls, name: str, term: NTerm) -> NTerm:
+        if name == DEFAULT_NAME: name = str(id(term))
+        if cls._invalidateSymbol(name): raise InvalidSymbolError
+        else: return (cls._symbols.update({name: term}) or term)
     
     @classmethod
-    def zeroOrMore(cls, name: str, grammar: PegGrammar, isConv=False, isSkip=False) -> PegGrammar:
-        cls._validateGrammars([grammar])
-        # zero or more: e1*
-        @wraps(cls.zeroOrMore)
-        def _parser(src: str, ast: list, isSkip=isSkip):
-            _ast = []
-            while True:
-                _r, _s = grammar.parse(src, _ast, isSkip) if isSkip else grammar.parse(src, _ast)
-                if _r:
-                    src = _s
-                else:
-                    break
-            cls._appendAstNode(name, ast, _ast, isConv)
-            if src:
-                return True, src
-            return False, src
-        return PegGrammar(name, _parser)
+    def grammar(cls, name: str, *exprs, shorted: bool=False, attr: TermAttr=TermAttr.SEQUENCE) -> NTerm:
+        return cls._appendSymbol(name, _createNTerm(name, *exprs, attr=attr, shorted=shorted))
     
     @classmethod
-    def oneOrMore(cls, name: str, grammar: PegGrammar, isConv=False, isSkip=False) -> PegGrammar:
-        cls._validateGrammars([grammar])
-        # one ore more: e1+
-        @wraps(cls.oneOrMore)
-        def _parser(src: str, ast: list, isSkip=isSkip):
-            _ast = []
-            _r, _s = grammar.parse(src, _ast, isSkip) if isSkip else grammar.parse(src, _ast)
-            if _r:
-                src = _s
-                while True:
-                    _r, _s = grammar.parse(src, _ast, isSkip) if isSkip else grammar.parse(src, _ast)
-                    if _r:
-                        src = _s
-                    else:
-                        break
-            else:
-                return False, src
-            cls._appendAstNode(name, ast, _ast, isConv)
-            if src:
-                return True, src
-            return False, src
-        return PegGrammar(name, _parser)
-        
-    @classmethod
-    def optional(cls, name: str, grammar: PegGrammar, isConv=False, isSkip=False) -> PegGrammar:
-        cls._validateGrammars([grammar])
-        # optional: e1?
-        @wraps(cls.optional)
-        def _parser(src: str, ast: list, isSkip=isSkip):
-            _ast = []
-            _r, _s = grammar.parse(src, _ast, isSkip) if isSkip else grammar.parse(src, _ast)
-            if _r:
-                src = _s
-                cls._appendAstNode(name, ast, _ast, isConv)
-            return True, src
-        return PegGrammar(name, _parser)
-        
-    @classmethod
-    def andPred(cls, name: str, grammar: PegGrammar, isSkip=False) -> PegGrammar:
-        cls._validateGrammars([grammar])
-        # and predicate: &e1
-        @wraps(cls.andPred)
-        def _parser(src: str, ast: list, isSkip=isSkip):
-            _r, _s = grammar.parse(src, None, isSkip) if isSkip else grammar.parse(src, None)
-            return _r, src
-        return PegGrammar(name, _parser)
-        
-    @classmethod
-    def notPred(cls, name: str, grammar: PegGrammar, isSkip=False) -> PegGrammar:
-        cls._validateGrammars([grammar])
-        # not predicate: !e1
-        @wraps(cls.notPred)
-        def _parser(src: str, ast: list, isSkip=isSkip):
-            _r, _s = grammar.parse(src, None, isSkip) if isSkip else grammar.parse(src, None)
-            return not _r, src
-        return PegGrammar(name, _parser)
-    
-    @classmethod
-    def grammar(cls, name: str, *srcs: Union[str, PegGrammar], isSkip=False) -> PegGrammar:
-        _grams = []
-        _tmp = None
-        _isOrdered = None
-        for src in srcs:
-            if _isOrdered:
-                if _isOrdered == '/' and _tmp:
-                    _grams.append(cls.ordered(name, _tmp, cls._grammar(name, src, isSkip=isSkip), isConv=True, isSkip=isSkip))
-                elif _isOrdered == '&':
-                    _grams.append(cls.andPred(name, cls._grammar(name, src, isSkip=isSkip), isSkip=isSkip))
-                elif _isOrdered == '!':
-                    _grams.append(cls.notPred(name, cls._grammar(name, src, isSkip=isSkip), isSkip=isSkip))
-                _isOrdered = None
-                _tmp = None
-            elif isinstance(src, str):
-                if src == '/' and _tmp:
-                    _isOrdered = src
-                elif src in ('&', '!'):
-                    _isOrdered = src
-                    if _tmp:
-                        _grams.append(_tmp)
-                        _tmp = None
-                elif src == '*' and _tmp:
-                    _grams.append(cls.zeroOrMore(name, _tmp, isConv=True, isSkip=isSkip))
-                    _tmp = None
-                elif src == '+' and _tmp:
-                    _grams.append(cls.oneOrMore(name, _tmp, isConv=True, isSkip=isSkip))
-                    _tmp = None
-                elif src == '?' and _tmp:
-                    _grams.append(cls.optional(name, _tmp, isConv=True, isSkip=isSkip))
-                    _tmp = None
-                elif src == '':
-                    raise InvalidGrammarValueError
-                else:
-                    if _tmp:
-                        _grams.append(_tmp)
-                        _tmp = cls._grammar(name, src, isSkip=isSkip)
-                    else:
-                        _tmp = cls._grammar(name, src, isSkip=isSkip)
-            elif isinstance(src, PegGrammar):
-                _grams.append(src)
-            else:
-                raise InvalidGrammarError
-        if _tmp:
-            _grams.append(_tmp)
-        return len(_grams) == 1 and _grams[0] \
-            or cls.sequence(name, *_grams, isConv=True, isSkip=isSkip)
-    
-    @classmethod
-    def parse(cls, src: str, grammars: Union[PegGrammar, list], ast: list) -> bool:
-        _src = src
-        if isinstance(grammars, PegGrammar):
-            _r, _s = grammars.parse(src, ast)
-            return  _r or _s == ''
-        for gram in grammars:
-            if not isinstance(gram, PegGrammar):
-                raise InvalidGrammarError
-            _r, _s = gram.parse(_src, ast)
-            if not _r or _s == '': return True
-            _src = _s
-        return False
+    def ordered(cls, *exprs, shorted: bool=True) -> NTerm:
+        return cls.grammar(DEFAULT_NAME, *exprs, shorted=shorted, attr=TermAttr.ORDERED)
 
-# basic grammar implemented
-PEG.BR          = PEG._grammar('breakline', '\n')
-PEG.SPACE       = PEG._grammar('space', '\s')
-PEG.NUMBER      = PEG._grammar('number', '[+-]?[0-9]+\.?[0-9]*')
-PEG.STRINGS     = PEG._grammar('strings', '[a-zA-Zぁ-んァ-ン一-龥：-＠]+')
-PEG.SYMBOLS     = PEG._grammar('symbols', '[!-/:-@[-`{-~]')
-
-# shorter
-PEG.seq = PEG.sequence
-PEG.o = PEG.ordered
-PEG.one = PEG.oneOrMore
-PEG.opt = PEG.optional
-PEG.zero = PEG.zeroOrMore
-PEG.a = PEG.andPred
-PEG.n = PEG.notPred
+    @classmethod
+    def zeroMore(cls, *exprs, shorted: bool=True) -> NTerm:
+        return cls.grammar(DEFAULT_NAME, *exprs, shorted=shorted, attr=TermAttr.ZERO_OR_MORE)
+        
+    @classmethod
+    def oneMore(cls, *exprs, shorted: bool=True) -> NTerm:
+        return cls.grammar(DEFAULT_NAME, *exprs, shorted=shorted, attr=TermAttr.ONE_OR_MORE)
+        
+    @classmethod
+    def optional(cls, *exprs, shorted: bool=True) -> NTerm:
+        return cls.grammar(DEFAULT_NAME, *exprs, shorted=shorted, attr=TermAttr.OPTIONAL)
+    
+    @classmethod
+    def andPred(cls, *exprs, shorted: bool=True) -> NTerm:
+        return cls.grammar(DEFAULT_NAME, *exprs, shorted=shorted, attr=TermAttr.AND_PRED)
+        
+    @classmethod
+    def notPred(cls, *exprs, shorted: bool=True) -> NTerm:
+        return cls.grammar(DEFAULT_NAME, *exprs, shorted=shorted, attr=TermAttr.NOT_PRED)
+        
+    @classmethod
+    def parse(cls, src: str, grammar: NTerm) -> tuple:
+        if cls._invalidateGrammar(grammar): raise InvalidGrammarError
+        _src, _res = _parse(src, grammar, grammar.name, grammar.attr)
+        return _src, _res if isinstance(_res, AstNode) else AstNode(grammar.name, _res)
