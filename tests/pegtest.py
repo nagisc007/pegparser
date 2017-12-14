@@ -73,10 +73,18 @@ class TestGrammars(unittest.TestCase):
         self.assertEqual(PEG.parse('aa0000aaa', g2), ('0000aaa', ('tr_zero', 'aa')))
         self.assertEqual(PEG.parse('000aaa', g3), ('', ('tr_one', '000aaa')))
         self.assertEqual(PEG.parse('a0a', g4), ('0a', ('tr_opt', 'a')))
-        self.assertEqual(PEG.parse('0a', g5), ('0a', []))
+        self.assertEqual(PEG.parse('0a', g5), ('0a', ('tr_and', [])))
         self.assertEqual(PEG.parse('a0a', g5), ('a0a', None))
         self.assertEqual(PEG.parse('0a', g6), ('0a', None))
-        self.assertEqual(PEG.parse('a0a', g6), ('a0a', []))
+        self.assertEqual(PEG.parse('a0a', g6), ('a0a', ('tr_not',[])))
+    
+    def test_tr_complex(self):
+        g0 = PEG.tr('[0-9]', '/',  '[0-9]', '[a-z]', name='seq_ord')
+        g1 = PEG.tr('[0-9]', '/', 'a', 'b', '+', '[0-9]', name='seq_ord_one')
+        g2 = PEG.tr('[0-9]', PEG.tr('+', '[a-z]'), '[0-9]', name='seq_comp')
+        self.assertEqual(PEG.parse('0ab', g0), ('b',('seq_ord', '0a')))
+        self.assertEqual(PEG.parse('0b1234',g1), ('',('seq_ord_one', '0b1234')))
+        self.assertEqual(PEG.parse('0abc123', g2), ('23', ('seq_comp', '0abc1')))
 
 # #### Testing ####################################################### #
 if __name__ == '__main__':

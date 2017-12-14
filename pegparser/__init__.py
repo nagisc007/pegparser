@@ -281,44 +281,47 @@ class PEG(object):
         for s in srcs:
             if s == '/':
                 if _stack:
-                    _terms.append(cls.grammar(name, *_stack, attr=_attr))
+                    _terms.append(cls.grammar(None, *_stack, attr=_attr))
                     _stack = []
                 _attr = TermAttr.ORDERED
             elif s == '*':
                 if _stack:
-                    _terms.append(cls.grammar(name, *_stack, attr=_attr))
+                    _terms.append(cls.grammar(None, *_stack, attr=_attr))
                     _stack = []
                 _attr = TermAttr.ZERO_OR_MORE
             elif s == '+':
                 if _stack:
-                    _terms.append(cls.grammar(name, *_stack, attr=_attr))
+                    _terms.append(cls.grammar(None, *_stack, attr=_attr))
                     _stack = []
                 _attr = TermAttr.ONE_OR_MORE
             elif s == '?':
                 if _stack:
-                    _terms.append(cls.grammar(name, *_stack, attr=_attr))
+                    _terms.append(cls.grammar(None, *_stack, attr=_attr))
                     _stack = []
                 _attr = TermAttr.OPTIONAL
             elif s == '&':
                 if _stack:
-                    _terms.append(cls.grammar(name, *_stack, attr=_attr))
+                    _terms.append(cls.grammar(None, *_stack, attr=_attr))
                     _stack = []
                 _attr = TermAttr.AND_PRED
             elif s == '!':
                 if _stack:
-                    _terms.append(cls.grammar(name, *_stack, attr=_attr))
+                    _terms.append(cls.grammar(None, *_stack, attr=_attr))
                     _stack = []
                 _attr = TermAttr.NOT_PRED
             elif s == ',':
                 if _stack:
-                    _terms.append(cls.grammar(name, *_stack, attr=_attr))
+                    _terms.append(cls.grammar(None, *_stack, attr=_attr))
                     _stack = []
                 _attr == TermAttr.SEQUENCE
             else:
                 _stack.append(s)
         if _stack:
-            _terms.extend(_stack)
-        return cls.grammar(name, *_terms, attr=_attr)
+            if _attr != TermAttr.SEQUENCE:
+                _terms.append(cls.grammar(None, *_stack, attr=_attr))
+            else:
+                _terms.extend(_stack)
+        return cls.grammar(name, *_terms, attr=TermAttr.SEQUENCE)
     
     @classmethod
     def parse(cls, src: str, grammar: NTerm, excepted=None) -> tuple:
