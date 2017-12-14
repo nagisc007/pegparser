@@ -170,7 +170,6 @@ def _parse(src: str, grammar: NTerm, excepted=None) -> Tuple[str, MatchResult]:
                 else: break
                 if _src == '': break
         elif grammar.attr == TermAttr.OPTIONAL:
-            print(_s,_m)
             if _isSuccess(grammar.attr, _m):
                 _nodes.append(_m)
                 _src = _s
@@ -240,6 +239,13 @@ class PEG(object):
     WS          = WHITESPACE
     
     @classmethod
+    def _toNterm(attr: TermAttr, name: Union[str,None], *exprs) -> NTerm:
+        if attr == TermAttr.SEQUENCE:
+            return cls.grammar(name, *exprs, attr=attr)
+        else:
+            return cls.grammar(None, *exprs, attr=attr)
+    
+    @classmethod
     def grammar(cls, name: Union[str, None], *exprs: Union[str, NTerm], attr: TermAttr=TermAttr.SEQUENCE) -> NTerm:
         return _nonTermFrom(name if name else BaseSymbol.UNDEF.value, *exprs, attr=attr)
     
@@ -266,6 +272,53 @@ class PEG(object):
     @classmethod
     def notPred(cls, *exprs) -> NTerm:
         return cls.grammar(None, *exprs, attr=TermAttr.NOT_PRED)
+    
+    @classmethod
+    def tr(cls, *srcs, name=None) -> NTerm:
+        _terms = []
+        _stack = []
+        _attr = TermAttr.SEQUENCE
+        for s in srcs:
+            if s == '/':
+                if _stack:
+                    _terms.append(cls.grammar(name, *_stack, attr=_attr))
+                    _stack = []
+                _attr = TermAttr.ORDERED
+            elif s == '*':
+                if _stack:
+                    _terms.append(cls.grammar(name, *_stack, attr=_attr))
+                    _stack = []
+                _attr = TermAttr.ZERO_OR_MORE
+            elif s == '+':
+                if _stack:
+                    _terms.append(cls.grammar(name, *_stack, attr=_attr))
+                    _stack = []
+                _attr = TermAttr.ONE_OR_MORE
+            elif s == '?':
+                if _stack:
+                    _terms.append(cls.grammar(name, *_stack, attr=_attr))
+                    _stack = []
+                _attr = TermAttr.OPTIONAL
+            elif s == '&':
+                if _stack:
+                    _terms.append(cls.grammar(name, *_stack, attr=_attr))
+                    _stack = []
+                _attr = TermAttr.AND_PRED
+            elif s == '!':
+                if _stack:
+                    _terms.append(cls.grammar(name, *_stack, attr=_attr))
+                    _stack = []
+                _attr = TermAttr.NOT_PRED
+            elif s == ',':
+                if _stack:
+                    _terms.append(cls.grammar(name, *_stack, attr=_attr))
+                    _stack = []
+                _attr == TermAttr.SEQUENCE
+            else:
+                _stack.append(s)
+        if _stack:
+            _terms.extend(_stack)
+        return cls.grammar(name, *_terms, attr=_attr)
     
     @classmethod
     def parse(cls, src: str, grammar: NTerm, excepted=None) -> tuple:

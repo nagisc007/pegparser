@@ -59,6 +59,24 @@ class TestGrammars(unittest.TestCase):
         g = PEG.grammar("not", '-', PEG.notPred('[0-9]'), '.')
         self.assertEqual(PEG.parse("-01234abcd", g), ('01234abcd', ('not', '-')))
         self.assertEqual(PEG.parse("-abcd1234", g), ('bcd1234', ('not', '-a')))
+    
+    def test_tr(self):
+        g0 = PEG.tr('[0-9]', '[a-z]', name="tr_seq")
+        g1 = PEG.tr('/', '[0-9]', '[a-z]', name="tr_ord")
+        g2 = PEG.tr('*', '[0-9]', '[a-z]', name='tr_zero')
+        g3 = PEG.tr('+', '[0-9]', '[a-z]', name='tr_one')
+        g4 = PEG.tr('?', '[0-9]', '[a-z]', name='tr_opt')
+        g5 = PEG.tr('&', '[0-9]', '[a-z]', name='tr_and')
+        g6 = PEG.tr('!', '[0-9]', '[a-z]', name='tr_not')
+        self.assertEqual(PEG.parse('0a', g0), ('', ('tr_seq', '0a')))
+        self.assertEqual(PEG.parse('0a', g1), ('a', ('tr_ord', '0')))
+        self.assertEqual(PEG.parse('aa0000aaa', g2), ('0000aaa', ('tr_zero', 'aa')))
+        self.assertEqual(PEG.parse('000aaa', g3), ('', ('tr_one', '000aaa')))
+        self.assertEqual(PEG.parse('a0a', g4), ('0a', ('tr_opt', 'a')))
+        self.assertEqual(PEG.parse('0a', g5), ('0a', []))
+        self.assertEqual(PEG.parse('a0a', g5), ('a0a', None))
+        self.assertEqual(PEG.parse('0a', g6), ('0a', None))
+        self.assertEqual(PEG.parse('a0a', g6), ('a0a', []))
 
 # #### Testing ####################################################### #
 if __name__ == '__main__':

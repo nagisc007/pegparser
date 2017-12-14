@@ -51,12 +51,12 @@ End.
 def main(argv: list) -> int:
     # define grammars
     STR_WS      = PEG.grammar(None, PEG.oneMore(PEG.ordered(PEG.STRING_JP, PEG.NUMBER, PEG.WS, '\.')))
-    Head1       = PEG.grammar('head1', '# .', STR_WS)
-    Head2       = PEG.grammar('head2', '## .', STR_WS)
-    Head3       = PEG.grammar('head3', '### .', STR_WS)
-    List1       = PEG.grammar('list1', '[\-\*] .', STR_WS)
+    Head1       = PEG.grammar('head1', '# ', STR_WS)
+    Head2       = PEG.grammar('head2', '## ', STR_WS)
+    Head3       = PEG.grammar('head3', '### ', STR_WS)
+    List1       = PEG.grammar('list1', '[\-\*] ', STR_WS)
     List2       = PEG.grammar('list2', PEG.NUMBER, '\. ', STR_WS)
-    QUOTE       = PEG.grammar('quote', '> .', STR_WS)
+    QUOTE       = PEG.grammar('quote', '> ', STR_WS)
     EMB         = PEG.grammar('embed', '[\_\*]{2}', PEG.oneMore(STR_WS) ,'[\_\*]{2}')
     PARAGRAPH   = PEG.grammar("parag", PEG.oneMore(PEG.ordered(STR_WS, EMB)))
     HR          = PEG.grammar('hr', '---+|\*\*\*+')
