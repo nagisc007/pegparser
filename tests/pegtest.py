@@ -45,22 +45,21 @@ class TestGrammars(unittest.TestCase):
         self.assertEqual(PEG.parse("-abcd1234", g), ('234', ('one', '-abcd1')))
         self.assertEqual(PEG.parse("-1234abcd", g), ('1234abcd', ('one', '-')))
     
-    '''
     def test_optional(self):
-        g = PEG.grammar("opt", '-', PEG.optional('[a-z]'), '.', shorted=True)
+        g = PEG.grammar("opt", '-', PEG.optional('[a-z]'), '.')
         self.assertEqual(PEG.parse("-abcd1234", g), ('cd1234', ('opt', '-ab')))
         self.assertEqual(PEG.parse("-1234abcd", g), ('234abcd', ('opt', '-1')))
     
     def test_andPred(self):
-        g = PEG.grammar("and", '-', PEG.andPred('[0-9]'), '.', shorted=True)
+        g = PEG.grammar("and", '-', PEG.andPred('[0-9]'), '.')
         self.assertEqual(PEG.parse("-01234abcd", g), ('1234abcd', ('and', '-0')))
         self.assertEqual(PEG.parse("-abcd1234", g), ('abcd1234', ('and', '-')))
         
     def test_notPred(self):
-        g = PEG.grammar("not", '-', PEG.notPred('[0-9]'), '.', shorted=True)
+        g = PEG.grammar("not", '-', PEG.notPred('[0-9]'), '.')
         self.assertEqual(PEG.parse("-01234abcd", g), ('01234abcd', ('not', '-')))
         self.assertEqual(PEG.parse("-abcd1234", g), ('bcd1234', ('not', '-a')))
-'''
+
 # #### Testing ####################################################### #
 if __name__ == '__main__':
     unittest.main()

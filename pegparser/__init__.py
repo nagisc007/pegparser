@@ -170,20 +170,24 @@ def _parse(src: str, grammar: NTerm, excepted=None) -> Tuple[str, MatchResult]:
                 else: break
                 if _src == '': break
         elif grammar.attr == TermAttr.OPTIONAL:
+            print(_s,_m)
             if _isSuccess(grammar.attr, _m):
                 _nodes.append(_m)
                 _src = _s
         elif grammar.attr == TermAttr.AND_PRED:
             if not _isSuccess(grammar.attr, _m): break
+            _nodes.append(_EmptyNode)
         elif grammar.attr == TermAttr.NOT_PRED:
             if not _isSuccess(grammar.attr, _m): break
+            _nodes.append(_EmptyNode)
         else:# sequence
             if _isSuccess(grammar.attr, _m):
                 _nodes.append(_m)
                 _src = _s
             else: break
         if _src == '': break
-    return len(_nodes) == 0 and (_src, [] if grammar.attr == TermAttr.ZERO_OR_MORE else None) \
+    return grammar.attr in (TermAttr.AND_PRED, TermAttr.NOT_PRED) and (len(_nodes) > 0 and (src, []) or (src, None)) \
+        or len(_nodes) == 0 and (_src, [] if grammar.attr in (TermAttr.ZERO_OR_MORE, TermAttr.OPTIONAL) else None) \
         or (_src, _nodesReduced(_nodes, excepted) if _isBaseNode(grammar) else Node(grammar.name, _nodesReduced(_nodes, excepted)))
 
 def _nodesReduced(nodes: list, excepted=None) -> Union[list, Node, str]:
@@ -203,12 +207,18 @@ def _nodesReduced(nodes: list, excepted=None) -> Union[list, Node, str]:
         elif isinstance(n, list):
             _res = _nodesReduced(n, excepted)
             if isinstance(_res, str): _tmp += _res
+            elif _res == []: continue
             else:
+                if _tmp:
+                    _nodes.append(_tmp)
+                    _tmp = ''
                 _hasNode = True
                 _nodes.append(_res)
     if _tmp:
         _nodes.append(_tmp)
-    return _nodes if _hasNode else "".join(_nodes)
+    return not _hasNode and "".join([n for n in _nodes if n]) \
+        or len(_nodes) == 1 and not isinstance(_nodes[0], Node) and _nodes[0] \
+        or _nodes
 
 # #################################################################### #
 #   PEG class

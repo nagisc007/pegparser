@@ -58,15 +58,15 @@ def main(argv: list) -> int:
     List2       = PEG.grammar('list2', PEG.NUMBER, '\. ', STR_WS)
     QUOTE       = PEG.grammar('quote', '> .', STR_WS)
     EMB         = PEG.grammar('embed', '[\_\*]{2}', PEG.oneMore(STR_WS) ,'[\_\*]{2}')
-    PARAGRAPH   = PEG.grammar("parag", PEG.oneMore(PEG.ordered(STR_WS, EMB)), PEG.optional(PEG.BR))
+    PARAGRAPH   = PEG.grammar("parag", PEG.oneMore(PEG.ordered(STR_WS, EMB)))
     HR          = PEG.grammar('hr', '---+|\*\*\*+')
     COMMENT     = PEG.grammar('comment', '<!--', PEG.zeroMore(PEG.ordered(STR_WS, PEG.BR)), '-->')
-    Markdown    = PEG.grammar("Markdown", PEG.oneMore(PEG.ordered(Head1, Head2, Head3, List1, List2, QUOTE, HR, COMMENT, PARAGRAPH,PEG.BR)))
+    Markdown    = PEG.grammar("Markdown", PEG.oneMore(PEG.ordered(Head1, Head2, Head3, List1, List2, QUOTE, HR, COMMENT, PARAGRAPH, PEG.BR)))
     
     # parse source
     res = PEG.parse(SAMPLE_MARKDOWN, Markdown, excepted='\n')
     
-    print("Parse result: ",res)
+    print("Parse result: ",res[1])
     
     return 0
 
